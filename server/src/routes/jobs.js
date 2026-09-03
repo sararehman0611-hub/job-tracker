@@ -58,12 +58,18 @@ router.post('/', (req, res) => {
     res.status(201).json(job);
 });
 
-// PATCH /jobs/:id — update status
+// PATCH /jobs/:id — update status and/or notes
 router.patch('/:id', (req, res) => {
-    const { status } = req.body;
+    const { status, notes } = req.body;
+    const sets = [];
+    const values = [];
+    if (status !== undefined) { sets.push('status = ?'); values.push(status); }
+    if (notes !== undefined) { sets.push('notes = ?'); values.push(notes || null); }
+    if (sets.length === 0) return res.status(400).json({ error: 'nothing to update' });
+
     const result = db
-        .prepare('UPDATE applications SET status = ? WHERE id = ? AND user_id = ?')
-        .run(status, req.params.id, req.userId);
+        .prepare(`UPDATE applications SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`)
+        .run(...values, req.params.id, req.userId);
     if (result.changes === 0) return res.status(404).json({ error: 'not found' });
     res.json(db.prepare('SELECT * FROM applications WHERE id = ?').get(req.params.id));
 });

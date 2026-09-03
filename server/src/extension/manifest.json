@@ -38,5 +38,14 @@
                 "content/scraper.js"
             ]
         }
-    ]
+    ],
+    "commands": {
+        "track-job": {
+            "suggested_key": {
+                "default": "Ctrl+Shift+Y",
+                "mac": "Command+Shift+J"
+            },
+            "description": "Track the job on the current page"
+        }
+    }
 }

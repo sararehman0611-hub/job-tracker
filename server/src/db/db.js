@@ -35,4 +35,10 @@ db.exec(`
   );
 `);
 
+// --- migrations, for databases created before a column existed ---
+const appColumns = db.prepare('PRAGMA table_info(applications)').all().map(c => c.name);
+if (!appColumns.includes('notes')) {
+    db.exec('ALTER TABLE applications ADD COLUMN notes TEXT');
+}
+
 module.exports = db;

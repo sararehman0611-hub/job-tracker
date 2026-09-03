@@ -321,6 +321,11 @@ async function showDetail(job) {
     head.querySelector('.detail-sub').textContent =
         job.company + ' · applied ' + longAgo(job.applied_at);
 
+    // notes are written from the on-page widget; this is where they surface
+    const noteBox = $('detail-note');
+    noteBox.classList.toggle('hidden', !job.notes);
+    if (job.notes) noteBox.textContent = job.notes;
+
     const box = $('detail-events');
     box.innerHTML = '<p class="empty">Loading…</p>';
     try {

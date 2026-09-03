@@ -590,3 +590,16 @@ textarea {
 .event-body {
     min-width: 0;
 }
+
+.note {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--good-line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-top: 14px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text-2);
+    white-space: pre-wrap;
+}

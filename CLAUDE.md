@@ -44,7 +44,11 @@ points there.
 
 - `users` — `email` (unique), `google_refresh_token`
 - `applications` — `user_id`, `company`, `company_domain`, `role`, `job_url`, `source`,
-  `status` (default `applied`), `applied_at`, `last_email_at`
+  `status` (default `applied`), `applied_at`, `last_email_at`, `notes`
+
+`notes` is added by a migration at the bottom of `db.js` (a `PRAGMA table_info` check plus
+`ALTER TABLE`), because `CREATE TABLE IF NOT EXISTS` will not add a column to a table that
+already exists. Any future column needs the same treatment.
 - `email_events` — `application_id`, `gmail_message_id` (unique, used for dedupe),
   `subject`, `from_address`, `detected_type`, `received_at`. Surfaced in the popup's
   detail view via `GET /jobs/:id/events`.
@@ -180,6 +184,36 @@ Bug found and fixed while building this: `DELETE /jobs/:id` had **always** throw
 `FOREIGN KEY constraint failed` for any application with `email_events`, because
 `better-sqlite3` enforces foreign keys by default. Nothing had exercised it before — the
 popup had no delete UI. It now deletes the child rows first inside a transaction.
+
+### On-page widget states (content script)
+
+The floating widget is rendered inside a **shadow root** — LinkedIn's stylesheet is
+aggressive enough to restyle a plain injected button. It has four states:
+
+1. **Detected** — a blue "Track this job" pill carrying the keyboard hint.
+2. **Saving** — the same pill dimmed, with a spinner.
+3. **Tracked** — a card reading "Tracked as Applied", the company · role, and
+   "Saved from this page just now", with **Add a note** and **Undo**. It auto-dismisses
+   after 9s; opening the note box cancels that timer.
+4. **Error** — a red pill naming the failure, reverting to Detected after 3.5s.
+
+`refresh()` refuses to re-render while the state is `saving` or `tracked`, so a LinkedIn
+re-render cannot yank the confirmation away mid-flow.
+
+**Keyboard shortcut** — a `commands` entry (`track-job`) messages the active tab. Mac gets
+`Command+Shift+J`; the non-mac default is **`Ctrl+Shift+Y`, not `Ctrl+Shift+J`**, because
+the latter is Chrome's own DevTools shortcut and will not register. The button asks the
+service worker for the shortcut actually bound (`chrome.commands.getAll()`) and renders
+that, so it can never advertise a key that does not work. If nothing is bound, the hint is
+simply omitted. Users can rebind at `chrome://extensions/shortcuts`.
+
+**Undo / notes** go through the service worker rather than `fetch` from the content script,
+which keeps the JWT out of the page and avoids CORS from linkedin.com. The worker exposes
+one `call()` helper and a message map: `TRACK_JOB`, `UNTRACK_JOB`, `UPDATE_JOB`,
+`GET_SHORTCUT`, `GET_CURRENT_JOB` (handled in the content script).
+
+`PATCH /jobs/:id` builds its `SET` clause from whichever of `status` / `notes` is present,
+so a status-only update does not blank the notes. An empty body is a 400.
 
 ### Phase 7 — deploy
 
