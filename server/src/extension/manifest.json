@@ -1,0 +1,42 @@
+{
+    "manifest_version": 3,
+    "name": "JobTrail",
+    "version": "1.0",
+    "description": "Tracks your job applications and watches your inbox for updates.",
+    "icons": {
+        "16": "icons/icon16.png",
+        "32": "icons/icon32.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+    },
+    "action": {
+        "default_popup": "popup/index.html",
+        "default_icon": {
+            "16": "icons/icon16.png",
+            "32": "icons/icon32.png"
+        }
+    },
+    "permissions": [
+        "storage",
+        "alarms"
+    ],
+    "host_permissions": [
+        "http://localhost:3000/*",
+        "*://*.linkedin.com/jobs/*",
+        "*://*.naukri.com/job-listings-*"
+    ],
+    "background": {
+        "service_worker": "background/service-worker.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "*://*.linkedin.com/jobs/*",
+                "*://*.naukri.com/job-listings-*"
+            ],
+            "js": [
+                "content/scraper.js"
+            ]
+        }
+    ]
+}

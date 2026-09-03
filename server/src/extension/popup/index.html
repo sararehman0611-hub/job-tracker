@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+    <header>
+        <h1 id="page-title">Applications</h1>
+        <div class="header-actions">
+            <span id="sync-label" class="sync-label hidden"></span>
+            <button id="sync-btn" class="round hidden" title="Sync inbox now">&#8635;</button>
+            <button id="theme-btn" class="round" title="Toggle theme">🌙</button>
+        </div>
+    </header>
+
+    <!-- View 1: not connected yet -->
+    <section id="connect-view" class="hidden">
+        <p>Connect your account to start tracking.</p>
+        <button id="login-btn" class="primary">Connect Gmail</button>
+        <p class="hint">After approving, copy the token from the success page and paste it here:</p>
+        <textarea id="token-input" rows="3" placeholder="Paste token..."></textarea>
+        <button id="save-token-btn" class="primary">Save token</button>
+        <p id="connect-error" class="error hidden"></p>
+    </section>
+
+    <!-- View 2: main dashboard -->
+    <section id="main-view" class="hidden">
+        <!-- the job on the tab you're looking at right now -->
+        <div id="tab-card" class="hidden">
+            <div class="tab-card-info">
+                <div class="tab-card-label">On this tab</div>
+                <div class="tab-card-job"></div>
+            </div>
+            <button id="track-btn">Track</button>
+        </div>
+
+        <div id="summary">
+            <div class="summary-head">
+                <span id="active-n">0</span>
+                <span class="summary-label">active applications</span>
+            </div>
+            <div id="progress"></div>
+            <div id="legend"></div>
+        </div>
+
+        <nav id="filters">
+            <button data-f="all" class="tab active">All <b>0</b></button>
+            <button data-f="interview" class="tab">Interview <b>0</b></button>
+            <button data-f="applied" class="tab">Applied <b>0</b></button>
+            <button data-f="rejected" class="tab">Rejected <b>0</b></button>
+        </nav>
+
+        <div id="job-list"></div>
+
+        <div id="main-footer">
+            <button id="manual-btn" class="wide">&#43; Track a job manually</button>
+            <form id="add-form" class="hidden">
+                <input id="company" placeholder="Company" required>
+                <input id="role" placeholder="Role" required>
+                <input id="job_url" placeholder="Job URL (optional)">
+                <div class="form-actions">
+                    <button type="button" id="cancel-add" class="linklike">Cancel</button>
+                    <button type="submit" class="primary">Add</button>
+                </div>
+            </form>
+            <button id="logout-btn" class="linklike">Disconnect</button>
+        </div>
+    </section>
+
+    <!-- View 3: one application's email timeline -->
+    <section id="detail-view" class="hidden">
+        <button id="back-btn" class="linklike back">&#8592; All applications</button>
+        <div id="detail-head"></div>
+        <h2 class="section-title">Email history</h2>
+        <div id="detail-events"></div>
+    </section>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>
