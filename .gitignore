@@ -1,4 +1,6 @@
 node_modules/
-.env
+.env*
+!.env.example
 *.db
 .DS_Store
+sqlite-export.json

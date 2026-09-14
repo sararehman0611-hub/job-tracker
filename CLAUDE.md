@@ -16,11 +16,11 @@ Jobs get in mainly via the extension's scraper; manual entry lives behind the
 job-tracker/
 ├── extension/              # EMPTY — stray dir, ignore. Real extension is below.
 └── server/
-    ├── jobtracker.db       # SQLite file (gitignored via *.db, but currently force-added)
+    ├── scripts/import-sqlite.js  # one-off: load the old SQLite export into Postgres
     ├── .env                # GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET, PORT
     └── src/
         ├── index.js            # Express app entry; mounts routers; starts cron; POST /sync
-        ├── db/db.js            # opens SQLite, creates tables on boot
+        ├── db/db.js            # pg Pool + query helpers; init() creates the schema
         ├── routes/
         │   ├── auth.js         # /auth/google + /auth/google/callback (OAuth → refresh token + JWT)
         │   └── jobs.js         # GET/POST/PATCH/DELETE /jobs, all scoped to req.userId
@@ -49,7 +49,7 @@ points there.
 `notes` is added by a migration at the bottom of `db.js` (a `PRAGMA table_info` check plus
 `ALTER TABLE`), because `CREATE TABLE IF NOT EXISTS` will not add a column to a table that
 already exists. Any future column needs the same treatment.
-- `email_events` — `application_id`, `gmail_message_id` (unique, used for dedupe),
+- `email_events` — `application_id` (**ON DELETE CASCADE**), `gmail_message_id` (unique, used for dedupe),
   `subject`, `from_address`, `detected_type`, `received_at`. Surfaced in the popup's
   detail view via `GET /jobs/:id/events`.
 
@@ -67,7 +67,8 @@ Never moves backward; `rejected` always wins; `rejected`/`offer` are terminal.
 ```bash
 cd server
 npm install
-node src/index.js          # serves http://localhost:3000, starts the 15-min cron
+cp .env.example .env       # then fill in DATABASE_URL and the Google credentials
+npm start                  # serves http://localhost:3000, starts the 15-min cron
 ```
 
 Then in Chrome: `chrome://extensions` → Developer mode → Load unpacked →
@@ -217,6 +218,47 @@ so a status-only update does not blank the notes. An empty body is a 400.
 
 ### Phase 7 — deploy
 
+**Postgres migration: done 2026-09-08.** `better-sqlite3` removed, `pg` in. What changed:
+
+- `SERIAL` for `AUTOINCREMENT`, `TIMESTAMPTZ`/`NOW()` for `TEXT`/`datetime('now')`,
+  `$1` for `?`, `RETURNING *` instead of a follow-up SELECT.
+- **`ON DELETE CASCADE`** on `email_events.application_id`, which deletes the hand-rolled
+  transaction in `DELETE /jobs/:id` — the cascade does what the transaction was for.
+- `GET /jobs` uses `LEFT JOIN LATERAL` for the newest email per row.
+- `emailSync` now checks seen message ids with one `= ANY($1)` query instead of one query
+  per message, and inserts events `ON CONFLICT DO NOTHING`.
+- `db.init()` is awaited before `app.listen()` — schema creation is async now, so the
+  server must not accept traffic before it finishes.
+- **Timestamps: `parseTs()` in the popup needed no change.** Postgres returns `Date`
+  objects, which serialise to ISO strings containing `T`, and that is the branch
+  `parseTs()` already took. Verified, not assumed.
+
+Verified with **PGlite** (real Postgres compiled to WASM, a devDependency) by stubbing the
+`pg` module in `require.cache` so the unmodified app runs against it — 22 checks covering
+schema, CRUD, user scoping, the LATERAL join, cascade deletes and timestamp parsing. The
+importer was checked for idempotency by running it twice. This was necessary because the
+user's home router **refuses DNS for `*.neon.tech`** (returns REFUSED while resolving
+everything else), so Neon is unreachable from their laptop; Render's servers resolve it
+fine, so this blocks local testing only. Fix if wanted: set the Mac's DNS to 1.1.1.1.
+
+Data migration: `server/scripts/import-sqlite.js` loads `sqlite-export.json` (19
+applications, 2 users, 4 email events, exported 2026-09-07 — **gitignored, it holds a
+Google refresh token**) into whatever `DATABASE_URL` points at. Idempotent: users key on
+email, applications on user+company+role, events on `gmail_message_id`.
+
+Host chosen: **Render** (Singapore region — the user is in India; the web service must be
+in the same region as the database to use the internal connection URL).
+
+**Hard deadline: the Render free Postgres created 2026-09-05 expires 2026-10-05** and is
+deleted with all data. Before then either move to Neon/Supabase free Postgres (no expiry
+clock) or pay for Render's. This does not affect the migration code — `pg` talks to any
+Postgres.
+
+Render's free web service also **sleeps after ~15 min idle**, so the in-process `node-cron`
+will not fire reliably. Planned workaround rather than paying: the extension's existing
+5-minute `chrome.alarms` poll calls `POST /sync` instead of just `GET /jobs`, which both
+wakes the service and performs the sync. Cost: syncing only happens while Chrome is open.
+
 Everything currently requires the laptop terminal running. Deploy means:
 - Swap SQLite → Postgres (`pg`, rewrite `db.js`, `await` the queries) — Railway/Render have
   ephemeral filesystems that wipe the `.db` on redeploy.
@@ -243,5 +285,9 @@ Everything currently requires the laptop terminal running. Deploy means:
 
 - CommonJS (`require`), not ESM.
 - 4-space indent, single quotes, semicolons.
-- `better-sqlite3` — synchronous, prepared statements (`db.prepare(...).get/all/run`).
+- `pg` with a `Pool`. `src/db/db.js` exports `query / one / all / run / init / pool`;
+  `one`/`all`/`run` mirror better-sqlite3's old `get`/`all`/`run` so call sites read the
+  same, just awaited. Placeholders are `$1`, not `?`.
+- Every route handler is `async` and ends `catch (err) { next(err) }` so failures reach the
+  error handler instead of hanging the request.
 - Every `/jobs` query is filtered by `user_id = req.userId`; keep it that way.

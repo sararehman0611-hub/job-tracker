@@ -29,11 +29,11 @@ app.use('/auth', authRouter);
 app.use('/jobs', jobsRouter);
 
 app.post('/sync', requireAuth, async (req, res, next) => {
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.userId);
-    if (!user || !user.google_refresh_token) {
-        return res.status(400).json({ error: 'No Gmail connection for this user' });
-    }
     try {
+        const user = await db.one('SELECT * FROM users WHERE id = $1', [req.userId]);
+        if (!user || !user.google_refresh_token) {
+            return res.status(400).json({ error: 'No Gmail connection for this user' });
+        }
         const updates = await syncUser(user);
         res.json({ synced: true, statusChanges: updates });
     } catch (err) {
@@ -49,6 +49,15 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Something went wrong' });
 });
 
+// Creating the schema is async now, so the server must not accept traffic
+// until it has finished.
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
-startEmailSync();
+db.init()
+    .then(() => {
+        app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+        startEmailSync();
+    })
+    .catch((err) => {
+        console.error('Database init failed:', err.message);
+        process.exit(1);
+    });

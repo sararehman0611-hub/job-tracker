@@ -27,7 +27,7 @@ router.get('/google', (req, res) => {
 });
 
 // Step B: Google sends the user back here with a one-time code
-router.get('/google/callback', async (req, res) => {
+router.get('/google/callback', async (req, res, next) => {
     try {
         const { code } = req.query;
         if (!code) return res.status(400).send('Missing code');
@@ -42,15 +42,18 @@ router.get('/google/callback', async (req, res) => {
         const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
         const { data: profile } = await oauth2.userinfo.get();
 
-        // Create or update the user, storing the refresh token
-        db.prepare(`
-      INSERT INTO users (email, google_refresh_token)
-      VALUES (?, ?)
-      ON CONFLICT(email) DO UPDATE SET
-        google_refresh_token = COALESCE(excluded.google_refresh_token, google_refresh_token)
-    `).run(profile.email, tokens.refresh_token || null);
-
-        const user = db.prepare('SELECT * FROM users WHERE email = ?').get(profile.email);
+        // Create or update the user, storing the refresh token. Google only
+        // returns a refresh token on first consent, so never overwrite a stored
+        // one with null. RETURNING saves a second round trip.
+        const user = await db.one(
+            `INSERT INTO users (email, google_refresh_token)
+             VALUES ($1, $2)
+             ON CONFLICT (email) DO UPDATE SET
+               google_refresh_token =
+                 COALESCE(EXCLUDED.google_refresh_token, users.google_refresh_token)
+             RETURNING *`,
+            [profile.email, tokens.refresh_token || null]
+        );
 
         // Issue our own token for the extension to use
         const appToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
@@ -68,7 +71,7 @@ router.get('/google/callback', async (req, res) => {
     `);
     } catch (err) {
         console.error('OAuth callback error:', err);
-        res.status(500).send('Authentication failed — check the server terminal for details.');
+        res.status(500).send('Authentication failed — check the server logs for details.');
     }
 });
 
